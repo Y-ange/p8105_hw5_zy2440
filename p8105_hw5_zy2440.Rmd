@@ -1,0 +1,93 @@
+---
+title: "p8105_hw5_zy2440"
+author: "yangzhixin"
+date: "2020年11月19日"
+output: html_document
+---
+
+```{r setup, warnings=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+## Problem 2
+### Create the dataframe
+```{r 2data}
+library(tidyverse)
+library(R.utils)
+unzip("./data/hw5_data.zip", exdir = "./data/unzip")
+study_df <- data.frame(
+  name = list.files("./data/unzip/data")
+  )
+read_by_name=function(x){
+  f=paste("./data/unzip/data/",x,sep="")
+  y=read.csv(f)
+  y
+}
+data = map(study_df$name,read_by_name)
+for(i in 1:length(data)){
+  data[[i]]=pivot_longer(data[[i]],
+               cols = starts_with("w"),
+               names_to = "week",
+               values_to = "ob")
+}
+study_tidy <- mutate(study_df,data=data) %>%
+  separate(name, into = c("arm","ID")) %>%
+  mutate(arm=recode(arm, "con"="control", "exp"="experimental "), ID=as.numeric(ID)) %>%
+  unnest(cols = data)
+```
+
+### Plot the observations
+```{r 2plot}
+interaction.plot(study_tidy$week,paste(study_tidy$arm, study_tidy$ID),study_tidy$ob, col = c(rep(1,10),rep(2,10)),xlab = "Week",ylab = "Observation",legend = F)
+```
+
+In this plot, control groups are black lines and experimental groups are red. We can see from this plot that in all experimental groups the observation goes up over time and in all control groups the observation goes down over time. In week 8, obervations in experimental groups are larger than control groups.
+
+## Problem 3
+###The simulation and test
+```{r 3test}
+library("broom")
+n=30
+sig=5
+sim_test = function(x,rep=5000){
+  ds = vector("list", rep)
+  df = data.frame()
+  for(i in 1:rep){
+    ds[[i]]=rnorm(n, x, sig)
+    df = rbind(df,tidy(t.test(ds[[i]], alternative = "two.sided", mu = 0)))
+  }
+  select(df, estimate,p.value)
+}
+result=map(0:6,sim_test)
+```
+
+### Plot1
+```{r 3plot1}
+power=c()
+for (i in 1:7){
+  power[i]=nrow(result[[i]][result[[i]]$p.value > .05,])/nrow(result[[i]])
+}
+
+plot1_df <- data.frame(mu=0:6,power=power)
+ggplot(plot1_df, aes(x=mu, y=power))+
+  geom_point(alpha=.5) +
+  geom_smooth(se=FALSE)
+```
+
+The power goes down as the effect size goes up.
+
+```{r 3plot2}
+all_mean = c()
+rej_mean = c()
+for (i in 1:7){
+  all_mean[i]=mean(result[[i]]$estimate)
+  rej_mean[i]=mean(result[[i]][result[[i]]$p.value < .05,]$estimate)
+}
+plot2_df <- data.frame(mu=0:6,mean_all_mu=all_mean, mean_rej_mu=rej_mean)
+ggplot(plot2_df)+
+  geom_point(aes(x=mu,y=plot2_df$mean_all_mu),col=1)+
+  geom_point(aes(x=mu,y=plot2_df$mean_rej_mu),col=2)
+```
+
+The red dots represent the sample average of μ across tests for which the null is rejected and the black dots represent The sample average of μ across all tests.The sample average of μ across tests for which the null is rejected is approximately equal to the true value of μ. This is because t.test was two-sided, so the deviations cancelled out across tests.
